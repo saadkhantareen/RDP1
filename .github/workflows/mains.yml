@@ -1,0 +1,53 @@
+name: macOS Remote Desktop via Tailscale
+
+on:
+  workflow_dispatch:   # manual start
+  workflow_run:        # or trigger after build/test jobs
+    workflows: ["Build"]
+    types:
+      - completed
+
+jobs:
+  macos-vnc:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Tailscale
+        run: |
+          brew install tailscale
+
+      - name: Authenticate with Tailscale
+        run: |
+          sudo tailscaled & sleep 5
+          sudo tailscale up \
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
+            --hostname=gh-macos-${{ github.run_id }} \
+            --accept-routes \
+            --accept-dns \
+            --ssh \
+            --timeout=30s
+          echo "Tailscale IP: $(tailscale ip -4)"
+
+      - name: Install VNC server
+        run: |
+          brew install --cask xquartz
+          brew install tigervnc
+
+      - name: Start VNC server
+        run: |
+          # Create a VNC password
+          mkdir -p ~/.vnc
+          echo "github123" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+          # Launch VNC server on display :1 (port 5901)
+          vncserver :1 -localhost no -geometry 1440x900 -depth 24
+
+          echo "VNC server started on port 5901 with password 'github123'"
+
+      - name: Keep session alive
+        run: |
+          echo "Tailscale + VNC are running..."
+          sleep 6h
